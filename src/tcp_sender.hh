@@ -6,26 +6,25 @@
 
 #include <cstdint>
 #include <functional>
-#include <list>
-#include <memory>
-#include <optional>
 #include <queue>
+#include <utility>
 
-class RetransmissonTimer
+class RetransmissionTimer
 {
 public:
-  RetransmissonTimer( uint64_t RTO_ms ) : RTO_ms_( RTO_ms ) {}
-  bool is_active() const noexcept;
-  bool is_expired() const noexcept;
-  RetransmissonTimer& active() noexcept;
-
-  RetransmissonTimer& timeout() noexcept;
-
-  RetransmissonTimer& reset() noexcept;
-  RetransmissonTimer& tick( uint64_t ms_since_last_tick ) noexcept;
+  RetransmissionTimer( uint64_t initial_RTO_ms ) : RTO_( initial_RTO_ms ) {}
+  bool is_expired() const noexcept { return is_active_ && time_passed_ >= RTO_; }
+  bool is_active() const noexcept { return is_active_; }
+  RetransmissionTimer& active() noexcept;
+  // double the value of RTO
+  RetransmissionTimer& timeout() noexcept;
+  // 不提供 `stop()` 方法，有需要就用移动语义更换对象本身
+  // `reset()` 只重置计时器
+  RetransmissionTimer& reset() noexcept;
+  RetransmissionTimer& tick( uint64_t ms_since_last_tick ) noexcept;
 
 private:
-  uint64_t RTO_ms_;
+  uint64_t RTO_;
   uint64_t time_passed_ {};
   bool is_active_ {};
 };
@@ -35,7 +34,7 @@ class TCPSender
 public:
   /* Construct TCP sender with given default Retransmission Timeout and possible ISN */
   TCPSender( ByteStream&& input, Wrap32 isn, uint64_t initial_RTO_ms )
-    : input_( std::move( input ) ), isn_( isn ), timer_( initial_RTO_ms )
+    : input_( std::move( input ) ), isn_( isn ), initial_RTO_ms_( initial_RTO_ms ), timer_( initial_RTO_ms )
   {}
 
   /* Generate an empty TCPSenderMessage */
@@ -73,11 +72,11 @@ private:
   uint16_t windows_size_ { 1 };
   uint64_t next_seqno_ {};
   uint64_t acked_seqno_ {};
-  bool syn_flag_ {}, fin_flag_ {}, sent_syn {};
+  bool syn_flag_ {}, fin_flag_ {}, sent_syn_ {}, sent_fin_ {};
 
-  RetransmissonTimer timer_;
+  RetransmissionTimer timer_;
   uint64_t retransmisson_cnt_ {};
 
-  std::queue<TCPSenderMessage> outstanding_queue_ {};
+  std::queue<TCPSenderMessage> outstanding_bytes_ {};
   uint64_t num_bytes_in_flight_ {};
 };
