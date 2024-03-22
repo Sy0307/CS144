@@ -11,12 +11,31 @@
 #include <optional>
 #include <queue>
 
+class RetransmissonTimer
+{
+public:
+  RetransmissonTimer( uint64_t RTO_ms ) : RTO_ms_( RTO_ms ) {}
+  bool is_active() const noexcept;
+  bool is_expired() const noexcept;
+  RetransmissonTimer& active() noexcept;
+
+  RetransmissonTimer& timeout() noexcept;
+
+  RetransmissonTimer& reset() noexcept;
+  RetransmissonTimer& tick( uint64_t ms_since_last_tick ) noexcept;
+
+private:
+  uint64_t RTO_ms_;
+  uint64_t time_passed_ {};
+  bool is_active_ {};
+};
+
 class TCPSender
 {
 public:
   /* Construct TCP sender with given default Retransmission Timeout and possible ISN */
   TCPSender( ByteStream&& input, Wrap32 isn, uint64_t initial_RTO_ms )
-    : input_( std::move( input ) ), isn_( isn ), initial_RTO_ms_( initial_RTO_ms )
+    : input_( std::move( input ) ), isn_( isn ), timer_( initial_RTO_ms )
   {}
 
   /* Generate an empty TCPSenderMessage */
@@ -44,8 +63,21 @@ public:
   const Reader& reader() const { return input_.reader(); }
 
 private:
+  TCPSenderMessage make_message( uint64_t seqno, std::string payload, bool SYN, bool FIN = false ) const;
+
   // Variables initialized in constructor
   ByteStream input_;
   Wrap32 isn_;
   uint64_t initial_RTO_ms_;
+
+  uint16_t windows_size_ { 1 };
+  uint64_t next_seqno_ {};
+  uint64_t acked_seqno_ {};
+  bool syn_flag_ {}, fin_flag_ {}, sent_syn {};
+
+  RetransmissonTimer timer_;
+  uint64_t retransmisson_cnt_ {};
+
+  std::queue<TCPSenderMessage> outstanding_queue_ {};
+  uint64_t num_bytes_in_flight_ {};
 };
